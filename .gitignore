@@ -1,6 +1,26 @@
-# Ignore the virtual environment
-venv/
+# Virtual environment — never committed, everyone creates their own
 .venv/
+venv/
+env/
 
-# Ignore all CSV files
-*.csv
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+.vscode/
+*.swp
+
+# Generated data — fully reproducible via src/generate_data.py and
+# src/features.py (both seeded, see README). Small *_sample.csv files
+# are committed on purpose so the data shape is visible without running
+# anything; the full-size generated files are intentionally excluded.
+data/raw/sessions.csv
+data/processed/features.csv
+!data/raw/sessions_sample.csv
+!data/processed/features_sample.csv
+
+# Generated database — fully reproducible via src/db.py, starts empty
+*.db

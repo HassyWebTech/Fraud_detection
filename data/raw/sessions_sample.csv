@@ -1,0 +1,21 @@
+session_id,user_id,channel,timestamp,device_id,is_new_device,amount,recipient,recipient_known,label,attack_type,typing_ms,pin_pasted
+12465,1553,app,2026-01-01 00:35:00,dev_unknown_896876,True,41778.31,acct_56459,False,1,credential_theft,707.1,True
+11190,733,app,2026-01-01 00:56:00,dev_733_532649,False,5937.38,acct_2467,True,0,none,3042.8,False
+16486,231,app,2026-01-01 01:11:00,dev_231_537829,False,11537.68,acct_98564,True,0,none,3638.1,False
+26563,1293,app,2026-01-01 02:29:00,dev_1293_508131,False,4737.46,acct_32687,True,0,none,3924.6,False
+4721,733,app,2026-01-01 02:33:00,dev_unknown_361653,True,60684.29,acct_70743,False,1,sim_swap,893.9,True
+22315,314,app,2026-01-01 02:54:00,dev_314_724359,False,2505.73,acct_36379,True,0,none,1776.1,False
+21562,166,ussd,2026-01-01 03:22:00,dev_166_925841,False,17846.62,acct_9168,False,0,none,,False
+36967,1903,app,2026-01-01 03:35:00,dev_1903_383412,False,1466.98,acct_72035,True,0,none,2505.9,False
+3614,145,app,2026-01-01 04:06:00,dev_145_329167,False,2696.94,acct_34621,True,0,none,2597.8,False
+46198,548,ussd,2026-01-01 04:18:00,dev_548_80818,False,484.46,acct_72829,True,0,none,,False
+25873,1264,app,2026-01-01 04:18:00,dev_1264_449452,False,717.46,acct_41169,True,0,none,2421.2,False
+47196,0,ussd,2026-01-01 04:59:00,dev_0_189684,False,7441.38,acct_3528,True,0,none,,False
+14619,437,app,2026-01-01 05:03:00,dev_437_572703,False,16710.47,acct_11700,True,0,none,3473.9,False
+29523,1399,app,2026-01-01 05:04:00,dev_1399_288196,False,2794.14,acct_41600,True,0,none,2572.7,False
+46431,822,app,2026-01-01 05:12:00,dev_822_274898,False,8708.72,acct_48201,True,0,none,1364.7,False
+26675,127,app,2026-01-01 05:40:00,dev_127_288318,False,6628.98,acct_57552,True,0,none,2636.0,False
+42439,321,app,2026-01-01 05:45:00,dev_321_938647,False,7955.29,acct_61523,True,0,none,3324.3,False
+16517,1857,app,2026-01-01 05:46:00,dev_1857_831908,False,30770.51,acct_7276,True,0,none,2680.6,False
+43704,479,app,2026-01-01 05:58:00,dev_479_914841,False,2677.22,acct_67363,True,0,none,3458.5,False
+48918,1439,ussd,2026-01-01 06:32:00,dev_1439_513189,False,19449.72,acct_36467,True,0,none,,False
