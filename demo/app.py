@@ -19,6 +19,9 @@ db_module.init_db(DB_PATH)
 st.set_page_config(page_title="ATO Detection — ICSC 2026", layout="wide")
 
 
+# Load model + data (cached so it only loads once per session)
+
+
 @st.cache_resource
 def load_model():
     saved = joblib.load(os.path.join(REPO_ROOT, "models", "ato_model.pkl"))
@@ -104,7 +107,7 @@ with col1:
 with col2:
     st.subheader("2. Decision")
 
-    
+    # figure out which user_id / session_id to log against
     log_user_id = int(feature_row["user_id"]) if "user_id" in feature_row else 0
     log_session_id = int(feature_row["session_id"]) if "session_id" in feature_row else None
 

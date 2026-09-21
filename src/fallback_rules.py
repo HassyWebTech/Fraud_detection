@@ -5,7 +5,7 @@ from enum import Enum
 class Action(Enum):
     ALLOW = "allow"
     SOFT_CHALLENGE = "soft_challenge"   
-    HOLD_FOR_RECONCILIATION = "hold"     
+    HOLD_FOR_RECONCILIATION = "hold"    
 
 
 @dataclass
@@ -35,12 +35,16 @@ TIER_HOLD = 6
 
 
 def score_offline(session: dict, cache: CachedUserBaseline, cache_age_days: int = 0) -> dict:
-   
+    """
+    session: dict with keys device_id, amount, recipient, hour
+    Returns action + human-readable reasons — same explainability
+    principle as the online model, just rule-based instead of SHAP-based.
+    """
     triggered = []
     score = 0
 
     if cache is None:
-        
+       
         return dict(action=Action.SOFT_CHALLENGE,
                     reasons=["no cached profile available for this account — extra verification required"],
                     score=None, degraded_mode=True)
@@ -80,7 +84,7 @@ def score_offline(session: dict, cache: CachedUserBaseline, cache_age_days: int 
 
 
 def reconciliation_note(offline_decision: dict) -> str:
-    
+  
     return (
         f"Session scored in DEGRADED MODE (action={offline_decision['action'].value}). "
         f"Queued for automatic rescoring by full model on reconnect; "

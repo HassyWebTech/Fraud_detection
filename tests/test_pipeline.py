@@ -3,27 +3,29 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pandas as pd
-import pytest  # type: ignore[import-not-found]
+import pytest
 
 from features import circular_hour_distance, build_features
 from fallback_rules import score_offline, CachedUserBaseline, Action
 
 
+#  circular hour distance 
 
 def test_circular_hour_distance_same_hour():
     assert circular_hour_distance(14, 14) == 0
 
 def test_circular_hour_distance_wraparound():
-    # 23:00 and 01:00 are only 2 hours apart on a clock, not 22
+   
     assert circular_hour_distance(23, 1) == 2
 
 def test_circular_hour_distance_opposite():
     assert circular_hour_distance(0, 12) == 12
 
 
+# feature engineering: no leakage
+
 def test_features_cold_start_flagged():
-    """A user's first few sessions must be marked cold_start — there's
-    no real history yet to compute a trustworthy personal baseline."""
+   
     raw = pd.DataFrame([
         dict(session_id=i, user_id=1, channel="app",
              timestamp=f"2026-01-{i+1:02d} 12:00:00",
@@ -55,7 +57,7 @@ def test_features_no_future_leakage():
     ])
     feat_full = build_features(raw)
 
-    
+    # Now add a huge future outlier session AFTER session 3 and rebuild
     raw_with_future = pd.concat([raw, pd.DataFrame([
         dict(session_id=4, user_id=1, channel="app", timestamp="2026-01-05 12:00:00",
              device_id="dev_1", is_new_device=False, amount=9_000_000, recipient="acct_1",
@@ -63,14 +65,13 @@ def test_features_no_future_leakage():
     ])], ignore_index=True)
     feat_with_future = build_features(raw_with_future)
 
-    # session 3's features must be IDENTICAL whether or not a future
-    # session 4 exists — if they differ, the future is leaking backward.
+   
     row_before = feat_full[feat_full.session_id == 3].iloc[0]
     row_after = feat_with_future[feat_with_future.session_id == 3].iloc[0]
     assert row_before["amount_deviation"] == row_after["amount_deviation"]
 
 
-
+#  offline fallback 
 
 @pytest.fixture
 def cache():

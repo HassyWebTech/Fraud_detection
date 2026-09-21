@@ -12,13 +12,11 @@ correctness check, but rarely matches the real owner's behavior.
 ```bash
 # 1. Create and activate a virtual environment (keeps this project's
 #    dependencies isolated from your system Python)
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python3 -m venv venv
+source venv/bin/activate           # Windows: venv\Scripts\activate
 
-# 2. Install dependencies
+# 2. Install dependencies (includes pytest for running tests)
 pip install -r requirements.txt
-# for running tests too:
-pip install -r requirements-dev.txt
 
 # 3. Initialize the database
 cd src
@@ -96,3 +94,26 @@ Likewise, `data/ato.db` (the SQLite audit log) is not committed — it
 starts empty and is created by `python db.py`.
 
 See the technical write-up for full data generation methodology.
+
+## Technologies and exact versions used
+
+| Component | Version |
+|---|---|
+| Python | 3.10+ |
+| numpy | 2.2.3 |
+| pandas | 2.2.3 |
+| scikit-learn | 1.7.2 |
+| xgboost | 3.2.0 |
+| shap | 0.49.1 |
+| joblib | 1.4.2 |
+| streamlit | 1.43.0 |
+| pytest | 8.3.4 |
+| sqlite3 | built into Python (no install) |
+
+Note: `explain.py` includes a scoped compatibility workaround for a known
+XGBoost/SHAP issue, where XGBoost serializes its internal `base_score`
+parameter in a format (e.g. `"[5E-1]"`) that some SHAP versions fail to
+parse, raising `ValueError: could not convert string to float`. See the
+`_tree_explainer_safe()` docstring in `explain.py` for the fix — it makes
+the code robust across SHAP/XGBoost version combinations rather than
+depending on exact version alignment across every machine it runs on.

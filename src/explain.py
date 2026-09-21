@@ -3,8 +3,26 @@ import numpy as np
 import pandas as pd
 import joblib
 import shap
+import builtins
 
 import db as db_module
+
+
+def _tree_explainer_safe(booster):
+    
+    def _patched_float(value, _orig=builtins.float):
+        if isinstance(value, str):
+            s = value.strip()
+            if s.startswith("[") and s.endswith("]"):
+                return _orig(s.strip("[]"))
+        return _orig(value)
+
+    orig_float = builtins.float
+    builtins.float = _patched_float
+    try:
+        return shap.TreeExplainer(booster)
+    finally:
+        builtins.float = orig_float
 
 
 FEATURE_EXPLANATIONS = {
@@ -21,8 +39,10 @@ FEATURE_EXPLANATIONS = {
 
 
 def explain_session(model, feature_row: pd.Series, feature_cols: list,
+                     thresholds: dict, top_k: int = 2) -> dict:
    
-    explainer = shap.TreeExplainer(model)
+    # See _tree_explainer_safe() docstring for why this isn't a plain shap.TreeExplainer(...) call.
+    explainer = _tree_explainer_safe(model.get_booster())
     X = feature_row[feature_cols].to_frame().T.astype(float)
     shap_values = explainer.shap_values(X)
 
@@ -36,7 +56,8 @@ def explain_session(model, feature_row: pd.Series, feature_cols: list,
     else:
         tier = "allow"
 
-       top_features = contributions[contributions > 0].sort_values(ascending=False).head(top_k)
+    # only positive contributions (pushed risk UP) are relevant to "why flagged"
+    top_features = contributions[contributions > 0].sort_values(ascending=False).head(top_k)
     reasons = [FEATURE_EXPLANATIONS[f] for f in top_features.index if f in FEATURE_EXPLANATIONS]
 
     if tier == "allow":

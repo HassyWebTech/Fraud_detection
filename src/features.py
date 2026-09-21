@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 
 
+
 COLD_START_MIN_SESSIONS = 3
 
 
@@ -18,7 +19,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df["hour"] = df["timestamp"].dt.hour + df["timestamp"].dt.minute / 60.0
     df = df.sort_values(["user_id", "timestamp"]).reset_index(drop=True)
 
-    
+  
     pop_hour_mean = df["hour"].mean()
     pop_hour_std = max(df["hour"].std(), 0.5) if pd.notna(df["hour"].std()) else 0.5
     pop_amount_log = np.log(df["amount"])
@@ -32,7 +33,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
 
     for user_id, g in df.groupby("user_id", sort=False):
         g = g.sort_values("timestamp")
-        
+        # running (expanding, shifted by 1) stats — i.e. "history strictly before this row"
         hours = g["hour"].to_numpy()
         amounts_log = np.log(g["amount"].to_numpy())
         typing = g["typing_ms"].to_numpy()
@@ -40,7 +41,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
 
         n = len(g)
         for i in range(n):
-            history_n = i  
+            history_n = i  # number of PRIOR sessions available
             if history_n >= COLD_START_MIN_SESSIONS:
                 h_hist = hours[:i]
                 a_hist = amounts_log[:i]

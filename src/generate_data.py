@@ -5,17 +5,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 
-
-@dataclass
 class UserProfile:
     user_id: int
-    channel: str                     # "app" or "ussd"
-    typical_hour_mean: float         # 0-23, hour of day they usually transact
+    channel: str                     
+    typical_hour_mean: float         
     typical_hour_std: float
-    typing_ms_mean: float            # PIN/OTP entry duration, app users only
+    typing_ms_mean: float            
     typing_ms_std: float
-    device_id: str                   # their one usual device
-    txn_amount_mean: float           # naira
+    device_id: str                   
+    txn_amount_mean: float           
     txn_amount_std: float
     known_recipients: list = field(default_factory=list)
     sessions_per_week: float = 3.0
@@ -23,7 +21,7 @@ class UserProfile:
 
 def make_users(n_users: int, rng: np.random.Generator) -> list[UserProfile]:
     users = []
-    # ~35% of Nigerian mobile money / low-end banking users rely on USSD
+   
     channels = rng.choice(["app", "ussd"], size=n_users, p=[0.65, 0.35])
 
     for uid in range(n_users):
@@ -43,11 +41,6 @@ def make_users(n_users: int, rng: np.random.Generator) -> list[UserProfile]:
             sessions_per_week=max(0.5, rng.normal(3, 1.5)),
         ))
     return users
-
-
-# --------------------------------------------------------------------------
-# Session generation
-# --------------------------------------------------------------------------
 
 def gen_normal_session(user: UserProfile, sess_id: int, ts: datetime, rng) -> dict:
     hour = np.clip(rng.normal(user.typical_hour_mean, user.typical_hour_std), 0, 23.99)
@@ -84,8 +77,7 @@ def gen_normal_session(user: UserProfile, sess_id: int, ts: datetime, rng) -> di
 
 
 def gen_attack_session(user: UserProfile, sess_id: int, ts: datetime, rng) -> dict:
-    """Attacker acting on this user's account. Attack subtype chosen
-    based on channel (USSD attacks are necessarily metadata-only)."""
+    
     if user.channel == "ussd":
         attack_type = rng.choice(["sim_swap", "patient_low_and_slow"])
     else:
@@ -125,8 +117,7 @@ def gen_attack_session(user: UserProfile, sess_id: int, ts: datetime, rng) -> di
             row["pin_pasted"] = False
 
     elif attack_type == "patient_low_and_slow":
-        # stays close-ish to habits but amount creeps just under obvious limits,
-        # slightly unfamiliar recipient
+        
         row["device_id"] = user.device_id if rng.random() < 0.4 else f"dev_unknown_{rng.integers(0, 999999)}"
         row["is_new_device"] = row["device_id"] != user.device_id
         row["timestamp"] = ts.replace(hour=int(np.clip(rng.normal(user.typical_hour_mean, user.typical_hour_std * 2), 0, 23)))
@@ -140,7 +131,7 @@ def gen_attack_session(user: UserProfile, sess_id: int, ts: datetime, rng) -> di
             row["typing_ms"] = np.nan
             row["pin_pasted"] = False
 
-    else:  # social_engineering — the hard case, deliberately subtle
+    else:  
         row["device_id"] = user.device_id       # genuine device
         row["is_new_device"] = False
         row["timestamp"] = ts.replace(hour=int(np.clip(rng.normal(user.typical_hour_mean, user.typical_hour_std), 0, 23)))
@@ -157,9 +148,7 @@ def gen_attack_session(user: UserProfile, sess_id: int, ts: datetime, rng) -> di
     return row
 
 
-# --------------------------------------------------------------------------
-# Main generation loop
-# --------------------------------------------------------------------------
+
 
 def generate_dataset(n_users: int, n_sessions: int, attack_rate: float, seed: int) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
@@ -192,7 +181,7 @@ def main():
     p.add_argument("--attack_rate", type=float, default=0.012,  # ~1.2%, realistic severe imbalance
                     help="fraction of sessions that are attacks")
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--out", type=str, default="../data/sessions.csv")
+    p.add_argument("--out", type=str, default="../data/raw/sessions.csv")
     args = p.parse_args()
 
     df = generate_dataset(args.n_users, args.n_sessions, args.attack_rate, args.seed)

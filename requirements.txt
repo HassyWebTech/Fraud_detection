@@ -1,8 +1,8 @@
 numpy==2.2.3
 pandas==2.2.3
-scikit-learn
-xgboost
-shap
+scikit-learn==1.7.2
+xgboost==3.2.0
+shap==0.49.1
 joblib==1.4.2
 streamlit==1.43.0
 pytest==8.3.4
