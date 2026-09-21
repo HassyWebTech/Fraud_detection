@@ -1,4 +1,6 @@
-# Behavioral Account Takeover Detection
+# PulseGuard
+
+*Learns your rhythm, notices when it's not you.*
 
 ICSC 2026 Universities Hackathon — Track A (Financial Services & Digital Payments)
 
