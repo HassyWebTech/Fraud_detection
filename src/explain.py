@@ -1,7 +1,10 @@
+import time
 import numpy as np
 import pandas as pd
 import joblib
 import shap
+
+import db as db_module
 
 
 FEATURE_EXPLANATIONS = {
@@ -18,57 +21,76 @@ FEATURE_EXPLANATIONS = {
 
 
 def explain_session(model, feature_row: pd.Series, feature_cols: list,
-                     threshold: float, top_k: int = 2) -> dict:
-    
+   
     explainer = shap.TreeExplainer(model)
     X = feature_row[feature_cols].to_frame().T.astype(float)
     shap_values = explainer.shap_values(X)
 
-    # shap_values shape: (1, n_features) for binary XGBoost classifier
     contributions = pd.Series(shap_values[0], index=feature_cols)
     proba = model.predict_proba(X)[0, 1]
-    is_flagged = proba >= threshold
 
-    # only positive contributions (pushed risk UP) are relevant to "why flagged"
-    top_features = contributions[contributions > 0].sort_values(ascending=False).head(top_k)
+    if proba >= thresholds["block_threshold"]:
+        tier = "block"
+    elif proba >= thresholds["monitor_threshold"]:
+        tier = "monitor"
+    else:
+        tier = "allow"
+
+       top_features = contributions[contributions > 0].sort_values(ascending=False).head(top_k)
     reasons = [FEATURE_EXPLANATIONS[f] for f in top_features.index if f in FEATURE_EXPLANATIONS]
 
-    if not is_flagged:
+    if tier == "allow":
         sentence = "This transaction was reviewed and processed normally with no significant behavioral risk factors detected."
     elif not reasons:
-        sentence = "This transaction was flagged for manual review based on a combination of minor risk factors."
+        sentence = "This transaction was flagged for review based on a combination of minor risk factors."
     elif len(reasons) == 1:
         sentence = f"This transaction was flagged because {reasons[0]}."
     else:
         sentence = f"This transaction was flagged because {reasons[0]}, and {reasons[1]}."
 
-    return dict(risk_score=round(float(proba), 4), flagged=bool(is_flagged),
-                explanation=sentence, top_contributing_features=list(top_features.index))
+    return dict(risk_score=round(float(proba), 4), tier=tier, flagged=(tier != "allow"),
+                explanation=sentence, top_contributing_features=list(top_features.index),
+                reasons=reasons)
 
 
 def demo():
     saved = joblib.load("../models/ato_model.pkl")
-    model, feature_cols, threshold = saved["model"], saved["feature_cols"], saved["threshold"]
+    model, feature_cols = saved["model"], saved["feature_cols"]
+    thresholds = dict(block_threshold=saved["block_threshold"],
+                       monitor_threshold=saved["monitor_threshold"])
 
     df = pd.read_csv("../data/processed/features.csv", parse_dates=["timestamp"])
 
-    print(f"Model decision threshold: {threshold:.3f}\n")
+    db_module.init_db("../data/ato.db")
+
+    print(f"BLOCK threshold: {thresholds['block_threshold']:.3f} | "
+          f"MONITOR threshold: {thresholds['monitor_threshold']:.3f}\n")
     print("=" * 70)
 
-    # Show one example from each attack type, plus one normal session
-    for attack_type in ["none", "credential_theft", "sim_swap",
-                         "patient_low_and_slow", "social_engineering"]:
-        subset = df[df["attack_type"] == attack_type]
-        if len(subset) == 0:
-            continue
-        row = subset.iloc[0]
-        result = explain_session(model, row, feature_cols, threshold)
-        flagged = "FLAGGED" if result["flagged"] else "ALLOWED"
+    with db_module.get_conn("../data/ato.db") as conn:
+        for attack_type in ["none", "credential_theft", "sim_swap",
+                             "patient_low_and_slow", "social_engineering"]:
+            subset = df[df["attack_type"] == attack_type]
+            if len(subset) == 0:
+                continue
+            row = subset.iloc[0]
 
-        print(f"\nSession {int(row['session_id'])} | true label: {attack_type} | decision: {flagged}")
-        print(f"Risk score: {result['risk_score']:.1%}")
-        print(f"Customer-facing explanation: \"{result['explanation']}\"")
-        print("-" * 70)
+            t0 = time.perf_counter()
+            result = explain_session(model, row, feature_cols, thresholds)
+            latency_ms = (time.perf_counter() - t0) * 1000
+
+            decision_id = db_module.log_decision(
+                conn, user_id=int(row["user_id"]), engine="ml_model",
+                tier=result["tier"], reasons=result["reasons"],
+                session_id=int(row["session_id"]), risk_score=result["risk_score"],
+                latency_ms=latency_ms, true_label=int(row["label"]),
+            )
+
+            print(f"\nSession {int(row['session_id'])} | true label: {attack_type} | "
+                  f"tier: {result['tier'].upper()} | logged as decision_id={decision_id}")
+            print(f"Risk score: {result['risk_score']:.1%} | latency: {latency_ms:.3f}ms")
+            print(f"Customer-facing explanation: \"{result['explanation']}\"")
+            print("-" * 70)
 
 
 if __name__ == "__main__":

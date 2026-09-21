@@ -2,15 +2,19 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import time
 import streamlit as st
 import pandas as pd
 import joblib
 import shap
 
 from explain import explain_session, FEATURE_EXPLANATIONS
-from fallback_rules import score_offline, CachedUserBaseline, reconciliation_note
+from fallback_rules import score_offline, CachedUserBaseline, reconciliation_note, Action
+import db as db_module
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
+DB_PATH = os.path.join(REPO_ROOT, "data", "ato.db")
+db_module.init_db(DB_PATH)
 
 st.set_page_config(page_title="ATO Detection — ICSC 2026", layout="wide")
 
@@ -18,7 +22,9 @@ st.set_page_config(page_title="ATO Detection — ICSC 2026", layout="wide")
 @st.cache_resource
 def load_model():
     saved = joblib.load(os.path.join(REPO_ROOT, "models", "ato_model.pkl"))
-    return saved["model"], saved["feature_cols"], saved["threshold"]
+    thresholds = dict(block_threshold=saved["block_threshold"],
+                       monitor_threshold=saved["monitor_threshold"])
+    return saved["model"], saved["feature_cols"], thresholds
 
 @st.cache_data
 def load_data():
@@ -30,12 +36,13 @@ def load_raw():
     return pd.read_csv(os.path.join(REPO_ROOT, "data", "raw", "sessions.csv"),
                         parse_dates=["timestamp"])
 
-model, feature_cols, threshold = load_model()
+model, feature_cols, thresholds = load_model()
 feat_df = load_data()
 raw_df = load_raw()
 
 st.title("Behavioral Account Takeover Detection")
 st.caption("ICSC 2026 Hackathon — Track A · Prototype demo (synthetic data only)")
+
 
 st.sidebar.header("System status")
 offline_mode = st.sidebar.toggle("Simulate system offline (network/power cut)", value=False)
@@ -97,9 +104,13 @@ with col1:
 with col2:
     st.subheader("2. Decision")
 
+    
+    log_user_id = int(feature_row["user_id"]) if "user_id" in feature_row else 0
+    log_session_id = int(feature_row["session_id"]) if "session_id" in feature_row else None
+
     if offline_mode:
         cache = CachedUserBaseline(
-            user_id=0, last_known_device="usual_device",
+            user_id=log_user_id, last_known_device="usual_device",
             typical_amount_band_low=1000, typical_amount_band_high=15000,
             known_recipients={"known_acct"}, typical_hour_range=(7, 22),
             synced_at="2026-01-01",
@@ -110,7 +121,21 @@ with col2:
             recipient="known_acct" if feature_row.get("recipient_known", 1) else "unknown_acct",
             hour=(raw_row["hour"] if isinstance(raw_row, dict) else 12),
         )
+
+        t0 = time.perf_counter()
         result = score_offline(offline_session, cache, cache_age_days=3)
+        latency_ms = (time.perf_counter() - t0) * 1000
+
+        tier_map = {Action.ALLOW: "allow", Action.SOFT_CHALLENGE: "monitor",
+                    Action.HOLD_FOR_RECONCILIATION: "block"}
+        tier = tier_map[result["action"]]
+
+        with db_module.get_conn(DB_PATH) as conn:
+            decision_id = db_module.log_decision(
+                conn, user_id=log_user_id, engine="offline_fallback", tier=tier,
+                reasons=result["reasons"], session_id=log_session_id,
+                risk_score=None, latency_ms=latency_ms,
+            )
 
         st.error("⚠️ DEGRADED MODE — scored by local rule-based fallback, not the ML model")
         st.metric("Action", result["action"].value.upper())
@@ -118,19 +143,34 @@ with col2:
         for r in result["reasons"] or ["No risk factors triggered."]:
             st.write(f"- {r}")
         st.caption(reconciliation_note(result))
+        st.success(f"✅ Logged to audit trail (decision_id={decision_id}, {latency_ms:.3f}ms) "
+                   f"— queued for reconciliation once back online.")
 
     else:
-        result = explain_session(model, feature_row, feature_cols, threshold)
-        risk_pct = result["risk_score"]
+        t0 = time.perf_counter()
+        result = explain_session(model, feature_row, feature_cols, thresholds)
+        latency_ms = (time.perf_counter() - t0) * 1000
 
-        if result["flagged"]:
-            st.error(f"🚫 FLAGGED — risk score {risk_pct:.1%}")
+        with db_module.get_conn(DB_PATH) as conn:
+            decision_id = db_module.log_decision(
+                conn, user_id=log_user_id, engine="ml_model", tier=result["tier"],
+                reasons=result["reasons"], session_id=log_session_id,
+                risk_score=result["risk_score"], latency_ms=latency_ms,
+            )
+
+        risk_pct = result["risk_score"]
+        if result["tier"] == "block":
+            st.error(f"🚫 BLOCKED — risk score {risk_pct:.1%}")
+        elif result["tier"] == "monitor":
+            st.warning(f"🔍 MONITORING — risk score {risk_pct:.1%} (not blocked, flagged for review)")
         else:
             st.success(f"✅ ALLOWED — risk score {risk_pct:.1%}")
 
         st.progress(min(risk_pct, 1.0))
         st.write("**Explanation (customer-facing):**")
         st.info(result["explanation"])
+        st.caption(f"Logged to audit trail (decision_id={decision_id}, "
+                   f"scoring latency {latency_ms:.3f}ms)")
 
         with st.expander("Top contributing features (technical view)"):
             st.write(result["top_contributing_features"])

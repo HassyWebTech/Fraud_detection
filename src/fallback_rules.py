@@ -4,18 +4,19 @@ from enum import Enum
 
 class Action(Enum):
     ALLOW = "allow"
-    SOFT_CHALLENGE = "soft_challenge"  
-    HOLD_FOR_RECONCILIATION = "hold"     # queue, notify customer, resolve once back online
+    SOFT_CHALLENGE = "soft_challenge"   
+    HOLD_FOR_RECONCILIATION = "hold"     
 
 
 @dataclass
 class CachedUserBaseline:
+    
     user_id: int
     last_known_device: str
     typical_amount_band_low: float
     typical_amount_band_high: float
     known_recipients: set
-    typical_hour_range: tuple  # (start, end)
+    typical_hour_range: tuple  # (start, end), coarse — e.g. (7, 22)
     synced_at: str  # ISO date of last successful sync, for staleness checks
 
 
@@ -25,19 +26,21 @@ RULE_WEIGHTS = {
     "amount_moderately_above_band": 1,
     "unknown_recipient": 2,
     "unusual_hour": 1,
-    "stale_cache": 1,  
+    "stale_cache": 1,   
 }
 
-# Tier thresholds
+
 TIER_SOFT_CHALLENGE = 3
 TIER_HOLD = 6
 
 
 def score_offline(session: dict, cache: CachedUserBaseline, cache_age_days: int = 0) -> dict:
+   
     triggered = []
     score = 0
 
     if cache is None:
+        
         return dict(action=Action.SOFT_CHALLENGE,
                     reasons=["no cached profile available for this account — extra verification required"],
                     score=None, degraded_mode=True)
@@ -77,6 +80,7 @@ def score_offline(session: dict, cache: CachedUserBaseline, cache_age_days: int 
 
 
 def reconciliation_note(offline_decision: dict) -> str:
+    
     return (
         f"Session scored in DEGRADED MODE (action={offline_decision['action'].value}). "
         f"Queued for automatic rescoring by full model on reconnect; "
@@ -85,6 +89,11 @@ def reconciliation_note(offline_decision: dict) -> str:
 
 
 def demo():
+    import time
+    import db as db_module
+
+    db_module.init_db("../data/ato.db")
+
     cache = CachedUserBaseline(
         user_id=1, last_known_device="dev_1_500123",
         typical_amount_band_low=1000, typical_amount_band_high=15000,
@@ -102,12 +111,28 @@ def demo():
     ]
 
     print("=== Offline/Degraded-Mode Fallback Demo (no model, no network) ===\n")
-    for s in scenarios:
-        result = score_offline(s["session"], cache, cache_age_days=3)
-        print(f"{s['name']}")
-        print(f"  -> Action: {result['action'].value} (score={result['score']})")
-        print(f"  -> Reasons: {result['reasons']}")
-        print(f"  -> {reconciliation_note(result)}\n")
+    with db_module.get_conn("../data/ato.db") as conn:
+        for s in scenarios:
+            t0 = time.perf_counter()
+            result = score_offline(s["session"], cache, cache_age_days=3)
+            latency_ms = (time.perf_counter() - t0) * 1000
+
+           
+            tier_map = {Action.ALLOW: "allow", Action.SOFT_CHALLENGE: "monitor",
+                        Action.HOLD_FOR_RECONCILIATION: "block"}
+            tier = tier_map[result["action"]]
+
+            decision_id = db_module.log_decision(
+                conn, user_id=cache.user_id, engine="offline_fallback",
+                tier=tier, reasons=result["reasons"], risk_score=None,
+                latency_ms=latency_ms,
+            )
+
+            print(f"{s['name']}")
+            print(f"  -> Action: {result['action'].value} (tier={tier}, score={result['score']})")
+            print(f"  -> Reasons: {result['reasons']}")
+            print(f"  -> Logged as decision_id={decision_id}, latency={latency_ms:.4f}ms")
+            print(f"  -> {reconciliation_note(result)}\n")
 
 
 if __name__ == "__main__":
